@@ -32,12 +32,14 @@ If you 'git clone' DasBuild into your project, so that you now have:
 
 Then create a 'proj/Makefile' with the following content:
 
-> TARGETS = hello
-> hello.SRC = hello.cc
-> ifndef TOPDIR
->   TOPDIR = .
->   include $(TOPDIR)/DasBuild/Makefile.main
-> endif
+```
+TARGETS = hello
+hello.SRC = hello.cc
+ifndef TOPDIR
+  TOPDIR = .
+  include $(TOPDIR)/DasBuild/Makefile.main
+endif
+```
 
 You now have a complete makefile, with all the bells and whistles of clean,
 debug unit test targets and the like.
