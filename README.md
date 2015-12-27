@@ -16,4 +16,28 @@ the problem for myself.
 
 What you see here is the second attempt at these goals.
 
+## Getting started
 
+Let's start with a basic example of a project, the tired old Hello World
+example; lets assume that you have the following project hierarchy:
+
+* proj/
+  * hello.cc
+
+If you 'git clone' DasBuild into your project, so that you now have:
+
+* proj/
+  * DasBuild/
+  * hello.cc
+
+Then create a 'proj/Makefile' with the following content:
+
+> TARGETS = hello
+> hello.SRC = hello.cc
+> ifndef TOPDIR
+>   TOPDIR = .
+>   include $(TOPDIR)/DasBuild/Makefile.main
+> endif
+
+You now have a complete makefile, with all the bells and whistles of clean,
+debug unit test targets and the like.
