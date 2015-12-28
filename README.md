@@ -1,4 +1,4 @@
-# DasBuild
+# Das Build
 *A generic Build System Driven by GNU Make*
 
 ## Introduction
@@ -45,6 +45,7 @@ Then create a 'proj/Makefile' with the following content:
 ```
 TARGETS = hello
 hello.SRC = hello.cc
+
 ifndef TOPDIR
   TOPDIR = .
   include $(TOPDIR)/DasBuild/Makefile.main
@@ -53,3 +54,53 @@ endif
 
 You now have a complete makefile, with all the bells and whistles of clean,
 debug unit test targets and the like.
+
+### Adding a Library to Your Project
+
+Let's now imagine that we have a 'libsalutation' that we wish to integrate into
+our hello application. We'd like this library to be a standalone static library
+that gets linked into our hello program, and as such our source code
+organization now looks something like this:
+
+* proj/
+  * DasBuild/
+  * Makefile
+  * salutation/
+    * german.cc
+    * swahili.cc
+  * hello.cc
+
+We have three tasks to accomplish:
+1. Inform make that there's stuff to look for in the 'salutation' directory.
+2. Specify how libsalutation will be built.
+3. Make the salutation library a dependency of 'hello'
+
+It is rather easy to do this by creating a Makefile in the 'salutation'
+directory with the following content:
+
+```
+LIB_TARGETS = salutation
+salutation.SRC = german.cc swahili.cc
+
+ifndef TOPDIR
+  TOPDIR = ..
+  include $(TOPDIR)/DasBuild/Makefile.subdir
+endif
+```
+
+This defines our library build. Now let's look at what the top-level Makefile
+looks like:
+
+```
+SUBDIRS = salutation
+TARGETS = hello
+hello.SRC = hello.cc
+hello.LIBDEP = salutation
+
+ifndef TOPDIR
+  TOPDIR = .
+  include $(TOPDIR)/DasBuild/Makefile.main
+endif
+```
+
+That's all!
