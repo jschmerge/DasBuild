@@ -1,0 +1,134 @@
+INCLUDES    = -I . 
+RAGEL_FLAGS = -G2 -e
+
+#
+# CFLAGS
+#
+CFLAGS.global                   = -Wall -Wextra -pthread $(INCLUDES)
+CFLAGS.global.release           = -march=native -O3 -g3 -NDEBUG
+CFLAGS.global.debug             = -g3
+CFLAGS.global.coverage          = -fprofile-arcs -ftest-coverage
+CFLAGS.global.exe               =
+CFLAGS.global.exe.release       =
+CFLAGS.global.exe.debug         =
+CFLAGS.global.exe.coverage      =
+CFLAGS.global.static            =
+CFLAGS.global.static.release    =
+CFLAGS.global.static.debug      =
+CFLAGS.global.static.coverage   =
+CFLAGS.global.shared            =
+CFLAGS.global.shared.release    =
+CFLAGS.global.shared.debug      =
+CFLAGS.global.shared.coverage   =
+
+#CFLAGS.$(T)                    =
+#CFLAGS.$(T).release            =
+#CFLAGS.$(T).debug              =
+#CFLAGS.$(T).coverage           =
+#CFLAGS.$(T).exe                =
+#CFLAGS.$(T).exe.release        =
+#CFLAGS.$(T).exe.debug          =
+#CFLAGS.$(T).exe.coverage       =
+#CFLAGS.$(T).static             =
+#CFLAGS.$(T).static.release     =
+#CFLAGS.$(T).static.debug       =
+#CFLAGS.$(T).static.coverage    =
+#CFLAGS.$(T).shared             =
+#CFLAGS.$(T).shared.release     =
+#CFLAGS.$(T).shared.debug       =
+#CFLAGS.$(T).shared.coverage    =
+
+#
+# CXXFLAGS
+#
+CXXFLAGS.global                 = -std=c++11 $(CFLAGS.global)
+CXXFLAGS.global.release         = $(CFLAGS.global.release)
+CXXFLAGS.global.debug           = $(CFLAGS.global.debug)
+CXXFLAGS.global.coverage        = $(CFLAGS.global.coverage)
+CXXFLAGS.global.exe             =
+CXXFLAGS.global.exe.release     =
+CXXFLAGS.global.exe.debug       =
+CXXFLAGS.global.exe.coverage    =
+CXXFLAGS.global.static          =
+CXXFLAGS.global.static.release  =
+CXXFLAGS.global.static.debug    =
+CXXFLAGS.global.static.coverage =
+CXXFLAGS.global.shared          =
+CXXFLAGS.global.shared.release  =
+CXXFLAGS.global.shared.debug    =
+CXXFLAGS.global.shared.coverage =
+
+#CXXFLAGS.$(T)                  =
+#CXXFLAGS.$(T).release          =
+#CXXFLAGS.$(T).debug            =
+#CXXFLAGS.$(T).coverage         =
+#CXXFLAGS.$(T).exe              =
+#CXXFLAGS.$(T).exe.release      =
+#CXXFLAGS.$(T).exe.debug        =
+#CXXFLAGS.$(T).exe.coverage     =
+#CXXFLAGS.$(T).static           =
+#CXXFLAGS.$(T).static.release   =
+#CXXFLAGS.$(T).static.debug     =
+#CXXFLAGS.$(T).static.coverage  =
+#CXXFLAGS.$(T).shared           =
+#CXXFLAGS.$(T).shared.release   =
+#CXXFLAGS.$(T).shared.debug     =
+#CXXFLAGS.$(T).shared.coverage  =
+
+#
+# LDFLAGS
+#
+LDFLAGS.global                  = -pthread
+LDFLAGS.global.release          =
+LDFLAGS.global.debug            = -rdynamic -fsanitize=address
+LDFLAGS.global.coverage         = -fprofile-arcs -ftest-coverage
+LDFLAGS.global.exe              =
+LDFLAGS.global.exe.release      =
+LDFLAGS.global.exe.debug        =
+LDFLAGS.global.exe.coverage     =
+LDFLAGS.global.shared           =
+LDFLAGS.global.shared.release   =
+LDFLAGS.global.shared.debug     =
+LDFLAGS.global.shared.coverage  =
+
+#LDFLAGS.$(T)                   =
+#LDFLAGS.$(T).release           =
+#LDFLAGS.$(T).debug             =
+#LDFLAGS.$(T).coverage          =
+#LDFLAGS.$(T).exe               =
+#LDFLAGS.$(T).exe.release       =
+#LDFLAGS.$(T).exe.debug         =
+#LDFLAGS.$(T).exe.coverage      =
+#LDFLAGS.$(T).shared            =
+#LDFLAGS.$(T).shared.release    =
+#LDFLAGS.$(T).shared.debug      =
+#LDFLAGS.$(T).shared.coverage   =
+
+#
+# LIBS
+#
+LIBS.global                     = -lrt -ldl
+LIBS.global.release             =
+LIBS.global.debug               =
+LIBS.global.coverage            =
+LIBS.global.exe                 =
+LIBS.global.exe.release         =
+LIBS.global.exe.debug           =
+LIBS.global.exe.coverage        =
+LIBS.global.shared              =
+LIBS.global.shared.release      =
+LIBS.global.shared.debug        =
+LIBS.global.shared.coverage     =
+
+#LIBS.$(T)                      =
+#LIBS.$(T).release              =
+#LIBS.$(T).debug                =
+#LIBS.$(T).coverage             =
+#LIBS.$(T).exe                  =
+#LIBS.$(T).exe.release          =
+#LIBS.$(T).exe.debug            =
+#LIBS.$(T).exe.coverage         =
+#LIBS.$(T).shared               =
+#LIBS.$(T).shared.release       =
+#LIBS.$(T).shared.debug         =
+#LIBS.$(T).shared.coverage      =

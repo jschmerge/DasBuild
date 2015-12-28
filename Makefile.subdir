@@ -1,0 +1,34 @@
+# Get the inode number of the Makefile
+INODE           = $(shell ls -inum Makefile | sed -e 's/ Makefile//g')
+# find in TOPDIR the Makefile
+PATH_TO_SUBDIR  = $(shell find $(TOPDIR) -inum $(INODE))
+# Grab the path to this directory from TOPDIR
+TARGET_PREFIX   = $(patsubst $(TOPDIR)/%/Makefile,%,$(PATH_TO_SUBDIR))
+
+# If no targets were specified on command-line, set them to what would be
+# 'all' for this directory
+ifndef MAKECMDGOALS
+  MAKECMDGOALS := $(LIBTARGETS) $(TARGETS)
+endif
+
+# figure out whether our target is in TARGETS or LIBTARGETS
+LOCAL          := $(filter $(TARGETS) $(LIBTARGETS), $(MAKECMDGOALS))
+
+# preface these targets with the directory name
+LOCAL          := $(LOCAL:%=$(TARGET_PREFIX)/%)
+
+# Targets like clean, codecount, etc. just end up passing through
+NON_LOCAL      := $(filter-out $(TARGETS) $(LIBTARGETS), $(MAKECMDGOALS))
+
+# reset out list of targets to what we just twiddled
+MAKECMDGOALS    = $(LOCAL) $(NON_LOCAL)
+
+# Any target should execute this rule
+%:
+	$(MAKE) -C $(TOPDIR) $(MAKECMDGOALS)
+
+# For things not caught by the previous wildcard rule:
+any:
+	$(MAKE) -C $(TOPDIR) $(MAKECMDGOALS)
+
+.PHONY: any

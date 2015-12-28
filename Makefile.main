@@ -1,0 +1,703 @@
+# Copyright (c) 2015 by John Schmerge
+#
+# This build system is released under the GNU GPL
+#
+
+BUILD_DIR       = $(TOPDIR)/Build
+
+BROWSER        ?= chromium-browser
+
+CC             ?= gcc
+CXX            ?= g++
+RAGEL          ?= ragel
+LD             ?= ld
+OBJCPY         ?= objcopy
+RANLIB         ?= ranlib -D
+
+BINDIR          = bin
+LIBDIR          = lib
+DEPDIR          = .deps
+OBJDIR          = .objs
+
+V              ?= 0
+Q_0             = @
+Q               = $(Q_$(V))
+QRAGEL_0        = $(info $(WS)     RAGEL $<)@
+QDEP_0          = $(info $(WS)       DEP $<)@
+QCC_0           = $(info $(WS)        CC [$(RELEASE)] $<)@
+QCXX_0          = $(info $(WS)       CXX [$(RELEASE)] $<)@
+QLINK_0         = $(info $(WS)      LINK [$(RELEASE)] $@)@
+QSYM_0          = $(info $(WS)       SYM [$(RELEASE)] $@)@
+QSTRIP_0        = $(info $(WS)     STRIP [$(RELEASE)] $@)@
+QLNKSYM_0       = $(info $(WS)    LNKSYM [$(RELEASE)] $@)@
+QAR_0           = $(info $(WS)        AR [$(RELEASE)] $@)@
+QRANLIB_0       = $(info $(WS)    RANLIB [$(RELEASE)] $@)@
+
+QRAGEL          = $(QRAGEL_$(V))$(RAGEL)
+QDEP            = $(QDEP_$(V))
+QCC             = $(QCC_$(V))$(CC)
+QCXX            = $(QCXX_$(V))$(CXX)
+QSYM            = $(QSYM_$(V))$(OBJCPY) --only-keep-debug
+QSTRIP          = $(QSTRIP_$(V))$(OBJCPY) --strip-all
+QLNKSYM         = $(QLNKSYM_$(V))$(OBJCPY) --add-gnu-debuglink
+QAR             = $(QAR_$(V))$(AR) -crS
+QRANLIB         = $(QRANLIB_$(V))$(RANLIB)
+QLINK           = $(QLINK_$(V))$(CXX)
+
+# XXX - these definitions could use some clean-up
+C_EXTENSIONS      := .c
+CXX_EXTENSIONS    := .cc .cxx .cpp
+SOURCE_EXTENSIONS := $(C_EXTENSIONS) $(CXX_EXTENSIONS)
+
+$(foreach e, $(C_EXTENSIONS), $(eval COMPILER$(e) = CC))
+$(foreach e, $(CXX_EXTENSIONS), $(eval COMPILER$(e) = CXX))
+
+#
+# We define release here as the default makefile target so that
+# a naked 'make' command picks it... Actual definition of the target
+# is much further on in the file
+#
+.DEFAULT_GOAL := release
+
+######################################################################
+define REMOVE
+  if [ $(V) = 1 ]; then \
+    echo "rm -rf $(1)"; \
+    rm -vrf $(1); \
+  else \
+    rm -rf $(1); \
+  fi
+endef
+
+######################################################################
+define SOURCE_FROM_RAGEL_TARGET
+  D = $(1)
+  EXT = $(2)
+
+  $$(D)$(DEPDIR)/%$$(EXT).d: EXT := $$(EXT)
+  $$(D)$(DEPDIR)/%$$(EXT).d: $$(D)%.rl | $$(D)$(DEPDIR)
+	$$(QDEP)echo "$$@ $$(<:%.rl=%$$(EXT)): $$< " \
+	  `$(TOPDIR)/Build/ragel_deps.sh $$<` > $$@
+
+  $(D)%$$(EXT): $$(D)%.rl
+		$$(QRAGEL) $$(RAGELFLAGS) -C $$< -o $$@
+endef
+
+######################################################################
+define GENERIC_OBJECT_TARGET
+  D = $(1)
+  RELEASE = $(2)
+  COMPILER = $(3)
+  EXT = $(4)
+
+  $$(D)$(DEPDIR)/%$$(EXT).$$(RELEASE).d: OBJDIR := $$(D)$(OBJDIR)
+  $$(D)$(DEPDIR)/%$$(EXT).$$(RELEASE).d: EXT := $$(EXT)
+  $$(D)$(DEPDIR)/%$$(EXT).$$(RELEASE).d: COMPILER := $$(COMPILER)
+  $$(D)$(DEPDIR)/%$$(EXT).$$(RELEASE).d: RELEASE := $$(RELEASE)
+
+  $$(D)$(DEPDIR)/%$$(EXT).$$(RELEASE).d: $$(D)%$$(EXT) | $$(D)$(DEPDIR)
+	$$(QDEP)$$($$(COMPILER)) $$(strip \
+	  -MM -MP -MT '$$(OBJDIR)/$$*$$(EXT).$$(RELEASE).o $$@' \
+	  $$($$(COMPILER)FLAGS.global) \
+	  $$($$(COMPILER)FLAGS.global.$$(RELEASE)) \
+	  $$($$(COMPILER)FLAGS.$$*$$(EXT)) \
+	  $$($$(COMPILER)FLAGS.$$*$$(EXT).$$(RELEASE)) \
+	  $$< -MF $$@)
+
+  $$(D)$(OBJDIR)/%$$(EXT).$$(RELEASE).o: OBJDIR := $$(D)$(OBJDIR)
+  $$(D)$(OBJDIR)/%$$(EXT).$$(RELEASE).o: EXT := $$(EXT)
+  $$(D)$(OBJDIR)/%$$(EXT).$$(RELEASE).o: COMPILER := $$(COMPILER)
+  $$(D)$(OBJDIR)/%$$(EXT).$$(RELEASE).o: RELEASE := $$(RELEASE)
+
+  $$(D)$(OBJDIR)/%$$(EXT).$$(RELEASE).o: $$(D)%$$(EXT) | $$(D)$(OBJDIR)
+	$$(Q$$(COMPILER)) $$(strip \
+	  $$($$(COMPILER)FLAGS.global) \
+	  $$($$(COMPILER)FLAGS.global.$$(RELEASE)) \
+	  $$($$(COMPILER)FLAGS.$$*$$(EXT)) \
+	  $$($$(COMPILER)FLAGS.$$*$$(EXT).$$(RELEASE)) \
+	  -c $$< -o $$@)
+endef
+
+######################################################################
+define GENERIC_TARGETS
+  D = $(1)
+  $$(D)$(DEPDIR) $$(D)$(OBJDIR) $$(D)$(BINDIR) $$(D)$(LIBDIR):
+	$$(Q)mkdir -p $$@
+
+  $$(foreach file, $$(GENERATED_SOURCE), \
+     $$(eval DEPS.source += $$(D)$(DEPDIR)/$$(file).d) \
+     $$(eval REAL_CLEAN_FILES := $$(REAL_CLEAN_FILES) $$(D)$$(file)))
+
+  $$(foreach e, $(SOURCE_EXTENSIONS), \
+    $$(foreach t, release debug coverage, \
+      $$(eval $$(call GENERIC_OBJECT_TARGET, $$(D), $$(t), CXX, $$(e)))))
+
+  $$(foreach e, $(SOURCE_EXTENSIONS), \
+    $$(eval $$(call SOURCE_FROM_RAGEL_TARGET, $$(D), $$(e))))
+endef
+
+######################################################################
+define CUSTOM_OBJECT_BUILD
+  OBJ_LIST := $1
+  DIR = $2
+  SRC = $3
+  TARGET = $4
+  TTYPE = $5
+  RELEASE = $6
+
+  COMPILER := $$(COMPILER$$(suffix $$(SRC)))
+  DEP_NAME := $$(DIR)$(DEPDIR)/$$(TARGET).$$(SRC).$$(RELEASE).d
+  OBJ_NAME := $$(DIR)$(OBJDIR)/$$(TARGET).$$(SRC).$$(RELEASE).o
+
+  $$(DEP_NAME): TARGET := $$(TARGET)
+  $$(DEP_NAME): TTYPE := $$(TTYPE)
+  $$(DEP_NAME): SRC := $$(SRC)
+  $$(DEP_NAME): RELEASE := $$(RELEASE)
+  $$(DEP_NAME): OBJ_NAME := $$(OBJ_NAME)
+  $$(DEP_NAME): COMPILER := $$(COMPILER)
+
+  $$(DEP_NAME): $$(DIR)$$(SRC) | $$(DIR)$(DEPDIR)
+	$$(QDEP)$$($$(COMPILER)) $$(strip \
+	  -MM -MP -MT '$$(OBJ_NAME) $$@' \
+	  $$($$(COMPILER)FLAGS.global) \
+	  $$($$(COMPILER)FLAGS.global.$$(RELEASE)) \
+	  $$($$(COMPILER)FLAGS.$$(TTYPE)) \
+	  $$($$(COMPILER)FLAGS.$$(TTYPE).$$(RELEASE)) \
+	  $$($$(COMPILER)FLAGS.$$(TTYPE).$$(SRC)) \
+	  $$($$(COMPILER)FLAGS.$$(TTYPE).$$(SRC).$$(RELEASE)) \
+	  $$($$(COMPILER)FLAGS.$$(TARGET)) \
+	  $$($$(COMPILER)FLAGS.$$(TARGET).$$(RELEASE)) \
+	  $$($$(COMPILER)FLAGS.$$(TARGET).$$(SRC)) \
+	  $$($$(COMPILER)FLAGS.$$(TARGET).$$(SRC).$$(RELEASE)) \
+	  $$($$(COMPILER)FLAGS.$$(SRC)) \
+	  $$($$(COMPILER)FLAGS.$$(SRC).$$(RELEASE)) \
+	  $$< -MF $$@)
+
+  $$(OBJ_NAME): TARGET := $$(TARGET)
+  $$(OBJ_NAME): TTYPE := $$(TTYPE)
+  $$(OBJ_NAME): SRC := $$(SRC)
+  $$(OBJ_NAME): RELEASE := $$(RELEASE)
+  $$(OBJ_NAME): COMPILER := $$(COMPILER)
+
+  $$(OBJ_NAME): $$(DIR)$$(SRC) | $$(DIR)$(OBJDIR)
+	$$(Q$$(COMPILER)) $$(strip \
+	  $$($$(COMPILER)FLAGS.global) \
+	  $$($$(COMPILER)FLAGS.global.$$(RELEASE)) \
+	  $$($$(COMPILER)FLAGS.$$(TTYPE)) \
+	  $$($$(COMPILER)FLAGS.$$(TTYPE).$$(RELEASE)) \
+	  $$($$(COMPILER)FLAGS.$$(TTYPE).$$(SRC)) \
+	  $$($$(COMPILER)FLAGS.$$(TTYPE).$$(SRC).$$(RELEASE)) \
+	  $$($$(COMPILER)FLAGS.$$(TARGET)) \
+	  $$($$(COMPILER)FLAGS.$$(TARGET).$$(RELEASE)) \
+	  $$($$(COMPILER)FLAGS.$$(TARGET).$$(SRC)) \
+	  $$($$(COMPILER)FLAGS.$$(TARGET).$$(SRC).$$(RELEASE)) \
+	  $$($$(COMPILER)FLAGS.$$(SRC)) \
+	  $$($$(COMPILER)FLAGS.$$(SRC).$$(RELEASE)) -c $$< -o $$@)
+
+  $$(OBJ_LIST) := $$($$(OBJ_LIST)) $$(OBJ_NAME)
+  DEPS.$$(RELEASE) := $$(DEPS.$$(RELEASE)) $$(DEP_NAME)
+
+endef
+
+######################################################################
+define COLLECT_OBJECTS
+  OBJ_LIST = $1
+  DIR = $2
+  SRC = $3
+  TARGET = $4
+  TTYPE = $5
+  RELEASE = $6
+
+  COMPILER := $$(COMPILER$$(suffix $$(SRC)))
+  DEP_NAME := $$(DIR)$(DEPDIR)/$$(SRC).$$(RELEASE).d
+  OBJ_NAME := $$(DIR)$(OBJDIR)/$$(SRC).$$(RELEASE).o
+
+  # if the object has custom compilation flags, this is the list of variables
+  # that would hold them - consolodate them into a temporary variable
+  # so that we can easily test if they diverge from the global or file default
+  # values
+  CUSTOM_FLAGS := $$(strip $$($$(COMPILER)FLAGS.$$(TTYPE)) \
+                  $$($$(COMPILER)FLAGS.$$(TTYPE).$$(RELEASE)) \
+                  $$($$(COMPILER)FLAGS.$$(TTYPE).$$(SRC)) \
+                  $$($$(COMPILER)FLAGS.$$(TTYPE).$$(SRC).$$(RELEASE)) \
+                  $$($$(COMPILER)FLAGS.$$(TARGET)) \
+                  $$($$(COMPILER)FLAGS.$$(TARGET).$$(RELEASE)) \
+                  $$($$(COMPILER)FLAGS.$$(TARGET).$$(SRC)) \
+                  $$($$(COMPILER)FLAGS.$$(TARGET).$$(SRC).$$(RELEASE)))
+
+  ifeq ($$(CUSTOM_FLAGS),)
+    $$(OBJ_LIST)     := $$($$(OBJ_LIST)) $$(OBJ_NAME)
+    DEPS.$$(RELEASE) := $$(DEPS.$$(RELEASE)) $$(DEP_NAME)
+  else
+    $$(eval $$(call CUSTOM_OBJECT_BUILD, $$(OBJ_LIST), $$(DIR), $$(SRC), \
+                                         $$(TARGET), $$(TTYPE), $$(RELEASE)))
+  endif
+endef
+
+######################################################################
+define STATIC_LIB
+  D = $1
+  T = $2
+  RELEASE = $3
+
+  FT := $$(D)lib$$(T)
+
+  EXT := .a
+  ifneq ($$(RELEASE),release)
+    EXT := .$$(RELEASE).a
+  endif
+
+  $$(FT).static.$$(RELEASE).filename   := lib$$(T)$$(EXT)
+  $$(FT).static.$$(RELEASE).directory  := $$(D)$(LIBDIR)
+  $$(FT).static.$$(RELEASE).path       := $$(D)$(LIBDIR)/lib$$(T)$$(EXT)
+  $$(foreach s, $$($$(T).SRC), \
+    $$(eval $$(call COLLECT_OBJECTS, $$(FT).static.$$(RELEASE).objects, \
+                                     $$(D), $$(s), $$(T), static, $$(RELEASE))))
+
+  $$($$(FT).static.$$(RELEASE).path): RELEASE := $$(RELEASE)
+  $$($$(FT).static.$$(RELEASE).path): $$($$(FT).static.$$(RELEASE).objects) \
+                                    | $$($$(FT).static.$$(RELEASE).directory)
+		$$(QAR) $$@ $$^
+		$$(QRANLIB) $$@
+
+  .PHONY: $$(FT)$$(EXT:%.a=%)
+  $$(FT)$$(EXT:%.a=%): $$($$(FT).static.$$(RELEASE).path)
+
+  $$(RELEASE)_TARGETS := $$($$(RELEASE)_TARGETS) \
+                         $$($$(FT).static.$$(RELEASE).path)
+endef
+
+######################################################################
+define LIBRARY_TARGET
+  D = $1
+  T = $2
+  RELEASE = $3
+
+  D = $1
+  T = $2
+
+  FT       := $$(D)lib$$(T)
+  lib$$(T) := $$(FT)
+
+  $$(foreach type, release debug coverage, \
+    $$(eval $$(call STATIC_LIB, $$(D), $$(T), $$(type))))
+
+  VENDOR_BUILDS := $$(strip $$(VENDOR_BUILDS) $$(VENDOR_DEP.$$(T)))
+endef
+
+######################################################################
+define INCLUDE_LIBRARY_SUBMAKE
+  D = $(1)
+
+  PREFIX :=
+  ifneq ($$(D),.)
+    PREFIX := $$(D)/
+  endif
+
+  OLD_LIB_TARGETS := $$(LIB_TARGETS)
+  SUBDIRS         :=
+  LIB_TARGETS     :=
+
+  include $$(D)/Makefile
+
+  SUBDIRS  := $$(addprefix $$(PREFIX), $$(SUBDIRS))
+
+  $$(foreach t, $$(LIB_TARGETS), \
+     $$(eval $$(call LIBRARY_TARGET, $$(PREFIX), $$(t))))
+
+  LIB_TARGETS := $$(OLD_LIB_TARGETS) \
+                 $$(addprefix $$(PREFIX)lib, $$(LIB_TARGETS))
+
+  $$(foreach d, $$(SUBDIRS), \
+     $$(eval $$(call INCLUDE_LIBRARY_SUBMAKE, $$(d))))
+endef
+
+######################################################################
+define MAKE_LIBFILE_LIST
+  DB_PREFIX = $(1)
+  LIB_LIST  = $(2)
+  RELEASE   = $(3)
+
+  $$(foreach l, $$(LIB_LIST), \
+    $$(eval $$(DB_PREFIX).lib_files := \
+              $$($$(DB_PREFIX).lib_files) \
+              $$($$(lib$$(l)).static.$$(RELEASE).path)))
+
+  $$(foreach l, $$(LIB_LIST), \
+    $$(eval $$(DB_PREFIX).lib_paths := \
+              $$($$(DB_PREFIX).lib_paths) \
+              $$($$(lib$$(l)).static.$$(RELEASE).directory)))
+
+  $$(foreach l, $$(LIB_LIST), \
+    $$(eval $$(DB_PREFIX).lib_dash_l := \
+      $$($$(DB_PREFIX).lib_dash_l) \
+      $$(patsubst lib%,-l%,$$(notdir $$(lib$$(l))))))
+endef
+
+######################################################################
+define EXE_TARGET
+  D = $1
+  T = $2
+  COMPILER = CXX 
+  RELEASE = $4
+
+  FT := $$(strip $$D)$$(strip $$T)
+
+  EXT :=
+  ifneq ($$(RELEASE),release)
+    EXT := .$$(RELEASE)
+  endif
+
+  $$(FT).exe.$$(RELEASE).filename  := $$(T)
+  $$(FT).exe.$$(RELEASE).directory := $$(D)$$(BINDIR)
+  $$(FT).exe.$$(RELEASE).path      := $$(D)$$(BINDIR)/$$(T)$$(EXT)
+
+  $$(foreach s, $$($$(T).SRC), \
+    $$(eval $$(call COLLECT_OBJECTS, $$(FT).exe.$$(RELEASE).objects, \
+                                     $$(D), $$(s), $$(T), exe, $$(RELEASE))))
+
+  $$(eval $$(call MAKE_LIBFILE_LIST, $$(FT).exe.$$(RELEASE), \
+                                     $$($$(T).LIBDEP), \
+                                     $$(RELEASE)))
+
+  $$($$(FT).exe.$$(RELEASE).path): COMPILER := $$(COMPILER)
+  $$($$(FT).exe.$$(RELEASE).path): RELEASE  := $$(RELEASE)
+  $$($$(FT).exe.$$(RELEASE).path): TARGET  := $$(T)
+
+  $$($$(FT).exe.$$(RELEASE).path): $$($$(FT).exe.$$(RELEASE).objects) \
+                                   $$($$(FT).exe.$$(RELEASE).lib_files) \
+                                 | $$($$(FT).exe.$$(RELEASE).directory)
+		$$(QLINK) $$(strip $$($$(COMPILER)FLAGS.global) \
+		                   $$($$(COMPILER)FLAGS.global.$$(RELEASE)) \
+		                   $$($$(COMPILER)FLAGS.global.exe) \
+		                   $$($$(COMPILER)FLAGS.global.exe.$$(RELEASE)) \
+		                   $$($$(COMPILER)FLAGS.$$(TARGET).exe) \
+		                   $$($$(COMPILER)FLAGS.$$(TARGET).exe.$$(RELEASE)) \
+		                   -o $$@ $$^ \
+		                   $$(LDFLAGS.global) \
+		                   $$(LDFLAGS.global.$$(RELEASE)) \
+		                   $$(LDFLAGS.global.exe) \
+		                   $$(LDFLAGS.global.exe.$$(RELEASE)) \
+		                   $$(LDFLAGS.$$(TARGET).exe) \
+		                   $$(LDFLAGS.$$(TARGET).exe.$$(RELEASE)) \
+		                   $$(LIBS.global) \
+		                   $$(LIBS.global.$$(RELEASE)) \
+		                   $$(LIBS.global.exe) \
+		                   $$(LIBS.global.exe.$$(RELEASE)) \
+		                   $$(LIBS.$$(TARGET)) \
+		                   $$(LIBS.$$(TARGET).exe) \
+		                   $$(LIBS.$$(TARGET).exe.$$(RELEASE)))
+		$$(if $$(findstring release, $$(RELEASE)),$$(QSYM) $$@ $$@.symbols,)
+		$$(if $$(findstring release, $$(RELEASE)), $$(QSTRIP) $$@,)
+		$$(if $$(findstring release, $$(RELEASE)), $$(QLNKSYM) $$@.symbols $$@,)
+		$$(if $$(findstring release, $$(RELEASE)), $$(Q)chmod 644 $$@.symbols,)
+
+  .PHONY: $$(D)$$(T)$$(EXT)
+  $$(D)$$(T)$$(EXT): $$($$(FT).exe.$$(RELEASE).path)
+
+  $$(RELEASE)_TARGETS := $$($$(RELEASE)_TARGETS) \
+                         $$($$(FT).exe.$$(RELEASE).path)
+
+  VENDOR_BUILDS := $$(strip $$(VENDOR_BUILDS) $$(VENDOR_DEP.$$(T)))
+endef
+
+######################################################################
+define INCLUDE_EXECUTABLE_SUBMAKE
+  D = $(1)
+
+  PREFIX :=
+  ifneq ($$(D),.)
+    PREFIX := $$(D)/
+  endif
+
+  OLD_SUBDIRS      := $$(SUBDIRS)
+  OLD_TARGETS      := $$(TARGETS)
+  OLD_LIB_TARGETS  := $$(LIB_TARGETS)
+
+  # Reset expected variables before including submake
+  UNIT.SRC         :=
+  SUBDIRS          :=
+  TARGETS          :=
+  GENERATED_SOURCE :=
+
+  include $$(D)/Makefile
+
+  $$(foreach r, release debug coverage, \
+    $$(foreach t, $$(TARGETS), \
+      $$(eval $$(call EXE_TARGET, $$(PREFIX), $$(t), CXX, $$(r)))))
+
+  LIB_TARGETS   := $$(OLD_LIB_TARGETS)
+  UNIT_SOURCE   := $$(UNIT_SOURCE) $$(wildcard $$(PREFIX)*.unit.*)
+  $$(foreach file, $$(subst .unit,, $$(wildcard $$(PREFIX)*.unit.*)), \
+    $$(eval UNIT_SOURCE := $$(UNIT_SOURCE) $$(wildcard $$(file))))
+
+  TARGETS       := $$(OLD_TARGETS) $$(addprefix $$(PREFIX), $$(TARGETS))
+  DEFER_SUBDIRS := $$(addprefix $$(PREFIX), $$(SUBDIRS))
+  SUBDIRS       := $$(OLD_SUBDIRS) $$(addprefix $$(PREFIX), $$(SUBDIRS))
+
+  $$(eval $$(call GENERIC_TARGETS, $$(PREFIX)))
+
+
+  $$(foreach d, $$(DEFER_SUBDIRS), \
+     $$(eval $$(call INCLUDE_EXECUTABLE_SUBMAKE, $$(d))))
+endef
+
+######################################################################
+define SPECIAL_TARGET
+  NAME = $(1)
+  RELEASE = $(2)
+  T := $$($$(NAME).target_name)
+  EXT := .$$(RELEASE)
+  ifeq ($$(RELEASE),release)
+    EXT :=
+  endif
+  $$(T).exe.$$(RELEASE).filename  = $$(T)$$(EXT)
+  $$(T).exe.$$(RELEASE).directory = $(BINDIR)
+  $$(T).exe.$$(RELEASE).path      = $(BINDIR)/$$(T)$$(EXT)
+  $$(foreach s, $$($$(NAME)_SOURCE), \
+	$$(info $$(s)) \
+    $$(eval $$(call COLLECT_OBJECTS, $$(T).exe.$$(RELEASE).objects, \
+                                     $$(dir $$(s)), $$(notdir $$(s)), $$(T), \
+                                     exe, $$(RELEASE))))
+
+  $$(eval $$(call MAKE_LIBFILE_LIST, $$(T).exe.$$(RELEASE), \
+                                     $$($$(T).LIBDEPS), \
+                                     $$(RELEASE)))
+
+  $$($$(T).exe.$$(RELEASE).path): RELEASE := $$(RELEASE)
+  $$($$(T).exe.$$(RELEASE).path): $$($$(T).exe.$$(RELEASE).objects) \
+                                  $$($$(T).exe.$$(RELEASE).lib_files) \
+                                | $$($$(T).exe.$$(RELEASE).directory)
+		$$(QLINK) $$(strip $$($$(COMPILER)FLAGS.global) \
+		                   $$($$(COMPILER)FLAGS.global.$$(RELEASE)) \
+		                   $$($$(COMPILER)FLAGS.global.exe) \
+		                   $$($$(COMPILER)FLAGS.global.exe.$$(RELEASE)) \
+		                   $$($$(COMPILER)FLAGS.$$(T).exe) \
+		                   $$($$(COMPILER)FLAGS.$$(T).exe.$$(RELEASE)) \
+		                   -o $$@ $$^ \
+		                   $$(LDFLAGS.global) \
+		                   $$(LDFLAGS.global.$$(RELEASE)) \
+		                   $$(LDFLAGS.global.exe) \
+		                   $$(LDFLAGS.global.exe.$$(RELEASE)) \
+		                   $$(LDFLAGS.$$(T).exe) \
+		                   $$(LDFLAGS.$$(T).exe.$$(RELEASE)) \
+		                   $$(LIBS.global) \
+		                   $$(LIBS.global.$$(RELEASE)) \
+		                   $$(LIBS.global.exe) \
+		                   $$(LIBS.global.exe.$$(RELEASE)) \
+		                   $$(LIBS.$$(T).exe) \
+		                   $$(LIBS.$$(T).exe.$$(RELEASE)))
+
+  .PHONY: $$(T)
+  $$(T)$$(EXT): $$($$(T).exe.$$(RELEASE).path)
+  $$(RELEASE)_TARGETS := $$($$(RELEASE)_TARGETS) \
+                         $$($$(T).exe.$$(RELEASE).path)
+endef
+
+######################################################################
+include $(BUILD_DIR)/Makefile.options
+include $(BUILD_DIR)/Makefile.vendor
+
+SUBDIRS     :=
+LIB_TARGETS :=
+$(eval $(call INCLUDE_LIBRARY_SUBMAKE, .))
+TARGETS     :=
+$(eval $(call INCLUDE_EXECUTABLE_SUBMAKE, .))
+
+$(foreach t, $(TARGETS), $(eval $(call EXECUTABLE_CREATION, $t)))
+
+# Probably want to move this somewhere else in the future
+UNIT.target_name                = UnitTest
+CFLAGS.UnitTest                 = -Igtest/include -DUNIT_TEST=1
+CXXFLAGS.UnitTest               = $(CFLAGS.UnitTest)
+UnitTest.LIBDEPS                = gtest
+VENDOR_BUILDS := $(strip $(VENDOR_BUILDS) $(VENDOR_DEP.UnitTest))
+$(eval $(call SPECIAL_TARGET, UNIT, release))
+$(eval $(call SPECIAL_TARGET, UNIT, debug))
+$(eval $(call SPECIAL_TARGET, UNIT, coverage))
+
+# Invoke macro from Makefile.vendor - this sets up the STAMP_DEPS variable
+$(foreach vb, $(VENDOR_BUILDS), $(eval $(call VENDOR_BUILD_SETUP, $(vb))))
+ 
+release: $(release_TARGETS)
+
+debug: $(debug_TARGETS)
+
+coverage: $(coverage_TARGETS)
+
+all: release coverage debug 
+
+.PHONY: all coverage release debug info help
+
+help info:
+	$(info ====================================================================)
+	$(info = Support targets                                                  =)
+	$(info ====================================================================)
+	$(info $(WS)	release   - default release build of everything)
+	$(info $(WS)	debug     - builds in 'debug' mode)
+	$(info $(WS)	coverage  - Profiling and test coverage build)
+	$(info $(WS)	all       - Build ALL release/debug/coverage targets)
+	$(info $(WS)	check     - Runs unit tests)
+	$(info $(WS)	covreport - Generates test coverage report [must have)
+	$(info $(WS)	            $${BROWSER} set to something sane])
+	$(info $(WS)	clean     - Standard clean target)
+	$(info $(WS)	realclean - Remove extracted dependencies in addition)
+	$(info $(WS)	coverage-clean)
+	$(info $(WS)	          - Removes coverage metrics & reports)
+	$(info $(WS)	vendor-clean)
+	$(info $(WS)	          - Removes built vendor packages)
+	$(info $(WS)	vendor-source-clean)
+	$(info $(WS)	          - Removes source archives for vendor code)
+	$(info $(WS)	help - prints this message)
+	$(info $(WS)	help - prints this message)
+	$(info ====================================================================)
+	$(info = Directories                                                      =)
+	$(info ====================================================================)
+	$(foreach d, $(sort $(SUBDIRS)), $(info $(WS)	$d))
+	$(info ====================================================================)
+	$(info = Libraries                                                        =)
+	$(info ====================================================================)
+	$(foreach t, $(sort $(LIB_TARGETS)), \
+	    $(info $(WS)	[static] $t {.debug, .coverage}) )
+	$(info ====================================================================)
+	$(info = Executables                                                      =)
+	$(info ====================================================================)
+	$(foreach t, $(TARGETS), \
+	    $(info $(WS)	$(t) {.debug, .coverage}))
+	$(info ====================================================================)
+	$(info = Vendor/Third Party Packages                                      =)
+	$(info ====================================================================)
+	$(foreach t, $(sort $(VENDOR_BUILDS)), \
+	    $(info $(WS)	vendor/$(t)) )
+
+
+check: $(BINDIR)/UnitTest
+	if [ -n $$TEST_FILTER ]; then \
+	  ./$< --gtest_filter="$$TEST_FILTER"; \
+	else \
+	  ./$<; \
+	fi
+
+coverage.info: coverage-clean UnitTest.coverage
+	if [ -n $$TEST_FILTER ]; then \
+	  ./bin/UnitTest.coverage --gtest_filter="$$TEST_FILTER"; \
+	else \
+	  ./bin/UnitTest.coverage; \
+	fi
+	$(Q)lcov --quiet --no-external --capture --directory . --output-file $@
+
+covreport: coverage.info
+	mkdir -p coverage-report
+	$(Q)BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
+	CID=$$(git rev-parse --short=8 HEAD); \
+	genhtml $< --quiet \
+	           --title "$$BRANCH branch; commit-id $$CID" \
+	           --frames \
+	           --show-details \
+	           --demangle-cpp \
+	           --legend \
+	           --output-directory coverage-report \
+	           --num-spaces=4 \
+	           --rc=geninfo_gcov_all_blocks=1
+	$(Q)if [ -n $${BROWSER} ]; then $${BROWSER} coverage-report/index.html; fi
+
+
+coverage-clean:
+	@$(call REMOVE, converage-report)
+	
+clean: coverage-clean
+	@for d in . $(SUBDIRS); do \
+	  if [ $(V) != 1 ]; then echo "     CLEAN $$d"; fi; \
+	  $(call REMOVE, $${d}/$(OBJDIR) \
+	                 $${d}/$(LIBDIR) \
+	                 $${d}/$(BINDIR) \
+	                 $${d}/*.info \
+	                 $${d}/core \
+	                 $${d}/core.[0123456789]* \
+	                 $${d}/a.out); \
+	done
+
+realclean: clean
+	@for d in . $(SUBDIRS); do \
+	  if [ $(V) != 1 ]; then echo "     CLEAN $$d"; fi; \
+	  $(call REMOVE, $${d}/$(DEPDIR)); done
+	@$(call REMOVE, $(REAL_CLEAN_FILES))
+
+.PHONY: info coverage-clean clean realclean
+
+#
+# There is no sense in making dependencies for targets if we are not building
+# them - this bit of stuff fixes all of that up
+#
+ifneq ($(strip $(findstring all,$(MAKECMDGOALS))),)
+  DEPS += $(DEPS.release)
+  DEPS += $(DEPS.debug)
+  DEPS += $(DEPS.coverage)
+endif
+
+ifneq ($(strip $(findstring release,$(MAKECMDGOALS))),)
+  DEPS += $(DEPS.release)
+endif
+
+ifneq ($(strip $(findstring debug,$(MAKECMDGOALS))),)
+  DEPS += $(DEPS.debug)
+endif
+
+ifneq ($(strip $(findstring coverage,$(MAKECMDGOALS))),)
+  DEPS += $(DEPS.coverage)
+endif
+
+ifndef DEPS
+  DEPS := $(DEPS.release)
+endif
+
+# optimization to avoid generating deps for targets that don't require them -
+# there's no sense in building the dep files if we're execting a target
+# without dependencies - XXX What can be added or should be removed from this
+# list of targets?
+NO_DEP_TARGETS = info %clean clean% tags print-targets
+
+ifeq ($(strip $(filter $(NO_DEP_TARGETS), $(MAKECMDGOALS))),)
+
+  # Vendor builds are a dependency for our dependencies - this ensures that
+  # vendor source is built first
+  $(DEPS) $(DEPS.source): $(STAMP_DEPS)
+
+  -include $(DEPS) $(DEPS.source)
+endif
+
+######################################################################
+define UNUSED_SHLIB_CREATE
+  T = $(1)
+  #
+  # Static libraries
+  # 
+#  $$($$(T).static.coverage.filename): $$($$(T).static.coverage.objects) \
+#                                    | $$($$(T).static.coverage.directory)
+#	$$(QAR) $$@ $$($$(T).static.coverage.objects)
+#	$$(RANLIB) $$@
+#
+#  #
+#  # Shared libraries
+#  #
+#  $$($$(T).shared.release.filename):  $$($$(T).shared.release.objects) \
+#                                   |  $$($$(T).shared.release.directory)
+#	$$(QSOLINK) -Wl,-soname,$$($$(T).shared.release.soname) \
+#	  -o $$@ $$($$(T).shared.release.objects) \
+#	  $$(LDFLAGS.global.shared.release) \
+#	  $$(LDFLAGS.$$(T).shared.release) \
+#	  $$(LIBS.global.shared.release) \
+#	  $$(LIBS.$$(T).shared.release)
+#
+#  $$($$(T).shared.debug.filename):  $$($$(T).shared.debug.objects) \
+#                                   |  $$($$(T).shared.debug.directory)
+#	$$(QSOLINK) -Wl,-soname,$$($$(T).shared.debug.soname) \
+#	  -o $$@ $$($$(T).shared.debug.objects)
+#
+#  $$($$(T).shared.coverage.filename):  $$($$(T).shared.coverage.objects) \
+#                                   |  $$($$(T).shared.coverage.directory)
+#	$$(QSOLINK) -Wl,-soname,$$($$(T).shared.coverage.soname) \
+#	  -o $$@ $$($$(T).shared.coverage.objects)
+#
+
+endef

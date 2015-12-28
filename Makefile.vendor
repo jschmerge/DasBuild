@@ -1,0 +1,100 @@
+VENDOR_SOURCE  = $(realpath $(TOPDIR))/../third_party
+VENDOR_BUILD   = $(realpath $(TOPDIR))/vendor-build
+VENDOR_INSTALL = $(realpath $(TOPDIR))/vendor-install
+STAMP_DIR      = .vendor-stamps
+
+VENDOR_BUILD_STAGES     = fetch post_fetch \
+                          unpack post_unpack \
+                          configure post_configure \
+                          build post_build \
+                          check post_check \
+                          install post_install \
+                          complete
+
+DEPS.fetch              =
+DEPS.post_fetch         = fetch
+DEPS.unpack             = post_fetch
+DEPS.post_unpack        = unpack
+DEPS.configure          = post_unpack
+DEPS.post_configure     = configure
+DEPS.build              = post_configure
+DEPS.post_build         = build
+DEPS.install            = $(if $(VENDOR_UNIT_TEST),post_check,post_build)
+DEPS.post_install       = install
+DEPS.check              = post_build
+DEPS.post_check         = check
+DEPS.complete           = $(if $(VENDOR_UNIT_TEST),post_install,post_check)
+
+DIR_DEPS.fetch          = $(STAMP_DIR) $(VENDOR_SOURCE)
+DIR_DEPS.post_fetch     = $(STAMP_DIR) $(VENDOR_SOURCE)
+DIR_DEPS.unpack         = $(STAMP_DIR) $(VENDOR_BUILD)
+DIR_DEPS.post_unpack    = $(STAMP_DIR) $(VENDOR_BUILD)
+DIR_DEPS.configure      = $(STAMP_DIR) $(VENDOR_BUILD)
+DIR_DEPS.post_configure = $(STAMP_DIR) $(VENDOR_BUILD)
+DIR_DEPS.build          = $(STAMP_DIR) $(VENDOR_BUILD)
+DIR_DEPS.post_build     = $(STAMP_DIR) $(VENDOR_BUILD)
+DIR_DEPS.install        = $(STAMP_DIR) $(VENDOR_INSTALL)
+DIR_DEPS.post_install   = $(STAMP_DIR) $(VENDOR_INSTALL)
+DIR_DEPS.check          = $(STAMP_DIR) $(VENDOR_INSTALL)
+DIR_DEPS.post_check     = $(STAMP_DIR) $(VENDOR_INSTALL)
+
+######################################################################
+define VENDOR_BUILD_SETUP
+  VB = $1
+  STAMP_DEPS := $$(STAMP_DEPS) $$(STAMP_DIR)/stamp.$$(VB).post_install
+
+  .PHONY: vendor/$$(VB)
+
+  vendor/$$(VB): $$(STAMP_DIR)/stamp.$$(VB).post_install
+endef
+
+######################################################################
+define VENDOR_BUILD_STAGE
+  PKG = $1
+  STEP = $2
+
+  STAGE := $$(subst post_,,$$(STEP))
+  PKG_DEPS := $$(shell . $(BUILD_DIR)/recipes/$$(PKG).recipe && \
+                  $$(STAGE)_dependencies)
+  PKG_DEPS := $$(patsubst %,$$(STAMP_DIR)/stamp.%,$$(PKG_DEPS))
+  PKG_DEPS := $$(PKG_DEPS) $$(if $$(DEPS.$$(STEP)),\
+                                 $$(STAMP_DIR)/stamp.$$(PKG).$$(DEPS.$$(STEP)))
+
+  $$(STAMP_DIR)/stamp.$$(PKG).$$(STEP): PKG := $$(PKG)
+  $$(STAMP_DIR)/stamp.$$(PKG).$$(STEP): STEP := $$(STEP)
+
+  $$(STAMP_DIR)/stamp.$$(PKG).$$(STEP): $(BUILD_DIR)/recipes/$$(PKG).recipe \
+                                        $$(PKG_DEPS) \
+                                      | $$(DIR_DEPS.$$(STEP))
+		$$(Q)if ! echo $$(STEP) | grep post_ > /dev/null ; then \
+		  printf "%10s %-60s" \
+		    `echo $$(STEP) | tr '[:lower:]' '[:upper:]'` \
+		    "[$$(PKG)]" ; \
+		else \
+		  echo COMPLETE; \
+		fi
+		$$(Q)VENDOR_SOURCE=$(VENDOR_SOURCE); \
+		VENDOR_BUILD=$(VENDOR_BUILD); \
+		VENDOR_INSTALL=$(VENDOR_INSTALL); \
+		MAKE=$$(MAKE); \
+		. $(BUILD_DIR)/recipes/$$(PKG).recipe && $$(STEP) \
+		  > $$(STAMP_DIR)/log-$$(PKG)-$$(STEP) 2>&1 \
+		  || (echo error running $$(STEP) for $$(PKG) && false)
+	                                    
+	$$(Q)touch $$@
+endef
+
+$(foreach recipe, $(patsubst Build/recipes/%.recipe,%,\
+                    $(wildcard Build/recipes/*.recipe)), \
+  $(foreach s, $(VENDOR_BUILD_STAGES), \
+    $(eval $(call VENDOR_BUILD_STAGE, $(recipe), $(s)))))
+
+# Directory Targets
+$(VENDOR_SOURCE) $(VENDOR_BUILD) $(VENDOR_INSTALL) $(STAMP_DIR):
+	$(Q)mkdir -p $@
+
+vendor-clean:
+	@$(call REMOVE, $(VENDOR_BUILD) $(VENDOR_INSTALL) $(STAMP_DIR))
+
+vendor-source-clean:
+	@$(call REMOVE, $(VENDOR_SOURCE))
