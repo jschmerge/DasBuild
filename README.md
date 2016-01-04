@@ -104,3 +104,24 @@ endif
 ```
 
 That's all!
+
+## Variables
+
+These variables provide ways of modifying the build system's behavior.
+
+#### Overridable Programs
+* ```AR``` - Static library archiver - default is 'ar'.
+* ```BROWSER``` - Web browser to launch for report targets - default is
+'chromium-browser'.
+* ```CC``` - The C compiler to use - default value is 'gcc'.
+* ```CXX``` - The C++ compiler to use - default value is 'g++'.
+* ```RAGEL``` - Ragel state machine compiler - default is 'ragel'.
+* ```OBJCPY``` - The objcpy program to use - default is 'objcopy'.
+* ```RANLIB``` - The static library indexer - default is 'ranlib -D'
+
+#### Changing behavior
+* ```V``` - Specifying V=1 on the command line will allow you to see the
+commands executed rather than the terse build output; this is useful for
+debugging builds.
+* ```VENDOR_UNIT_TEST``` - Setting this to '1' on the command line will cause
+the 'check' step of vendor builds to run.
