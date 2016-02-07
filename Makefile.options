@@ -5,7 +5,7 @@ RAGEL_FLAGS = -G2 -e
 # CFLAGS
 #
 CFLAGS.global                   = -Wall -Wextra -pthread $(INCLUDES)
-CFLAGS.global.release           = -march=native -O3 -g3 -NDEBUG
+CFLAGS.global.release           = -march=native -O3 -g3 -DNDEBUG
 CFLAGS.global.debug             = -g3
 CFLAGS.global.coverage          = -fprofile-arcs -ftest-coverage
 CFLAGS.global.exe               =

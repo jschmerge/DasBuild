@@ -3,7 +3,7 @@
 # This build system is released under the GNU GPL
 #
 
-BUILD_DIR       = $(TOPDIR)/Build
+BUILD_DIR       = $(TOPDIR)/DasBuild
 
 BROWSER        ?= chromium-browser
 
@@ -77,7 +77,7 @@ define SOURCE_FROM_RAGEL_TARGET
   $$(D)$(DEPDIR)/%$$(EXT).d: EXT := $$(EXT)
   $$(D)$(DEPDIR)/%$$(EXT).d: $$(D)%.rl | $$(D)$(DEPDIR)
 	$$(QDEP)echo "$$@ $$(<:%.rl=%$$(EXT)): $$< " \
-	  `$(TOPDIR)/Build/ragel_deps.sh $$<` > $$@
+	  `$(TOPDIR)/$(BUILD_DIR)/ragel_deps.sh $$<` > $$@
 
   $(D)%$$(EXT): $$(D)%.rl
 		$$(QRAGEL) $$(RAGELFLAGS) -C $$< -o $$@
@@ -507,14 +507,14 @@ $(eval $(call INCLUDE_EXECUTABLE_SUBMAKE, .))
 $(foreach t, $(TARGETS), $(eval $(call EXECUTABLE_CREATION, $t)))
 
 # Probably want to move this somewhere else in the future
-UNIT.target_name                = UnitTest
-CFLAGS.UnitTest                 = -Igtest/include -DUNIT_TEST=1
-CXXFLAGS.UnitTest               = $(CFLAGS.UnitTest)
-UnitTest.LIBDEPS                = gtest
-VENDOR_BUILDS := $(strip $(VENDOR_BUILDS) $(VENDOR_DEP.UnitTest))
-$(eval $(call SPECIAL_TARGET, UNIT, release))
-$(eval $(call SPECIAL_TARGET, UNIT, debug))
-$(eval $(call SPECIAL_TARGET, UNIT, coverage))
+#UNIT.target_name                = UnitTest
+#CFLAGS.UnitTest                 = -Igtest/include -DUNIT_TEST=1
+#CXXFLAGS.UnitTest               = $(CFLAGS.UnitTest)
+#UnitTest.LIBDEPS                = gtest
+#VENDOR_BUILDS := $(strip $(VENDOR_BUILDS) $(VENDOR_DEP.UnitTest))
+#$(eval $(call SPECIAL_TARGET, UNIT, release))
+#$(eval $(call SPECIAL_TARGET, UNIT, debug))
+#$(eval $(call SPECIAL_TARGET, UNIT, coverage))
 
 # Invoke macro from Makefile.vendor - this sets up the STAMP_DEPS variable
 $(foreach vb, $(VENDOR_BUILDS), $(eval $(call VENDOR_BUILD_SETUP, $(vb))))
